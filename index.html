@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>madeline@spellbound:~</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'TerminusWeb';
+            src: url('Terminus.ttf') format('truetype');
+            font-display: swap;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Color scheme */
+        :root {
+            --lavender: #cba6f7;
+            --lilac: #b4befe;
+            --mint: #a6e3a1;
+            --pink: #f5c2e7;
+            --blue: #89b4fa;
+            --yellow: #f9e2af;
+            --white: #cdd6f4;
+            --gray: #a6adc8;
+        }
+
+        body {
+            background: #1a1a1a;
+            color: var(--white);
+            font-size: 16px;
+            line-height: 1.0;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: grayscale;
+            font-smooth: never;
+            image-rendering: pixelated;
+        }
+
+        #terminal {
+            white-space: pre-wrap;
+            height: calc(100vh - 40px);
+            overflow-y: auto;
+            padding-bottom: 2em;
+            cursor: text;
+            font-size: 16px;
+            line-height: 1.2;
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: grayscale;
+            font-smooth: never;
+            image-rendering: pixelated;
+            color: var(--white);
+        }
+
+        .input-line {
+            display: flex;
+            align-items: center;
+            margin-top: 0.5em;
+        }
+
+        .prompt {
+            color: var(--lavender);
+            user-select: none;
+            margin-right: 0.5em;
+        }
+
+        .static-cmd {
+            color: var(--mint);
+        }
+
+        .output {
+            margin-bottom: 4px;
+            white-space: pre-wrap;
+            color: var(--white);
+        }
+
+        .command-history {
+            color: var(--gray);
+        }
+
+        .error {
+            color: #f38ba8;
+        }
+
+        pre.help {
+            color: var(--white);
+            margin: 0.5em 0 0.5em 0;
+            font-family: 'TerminusWeb', monospace;
+            font-size: 16px;
+            line-height: 1.0;
+            letter-spacing: 0;
+            background: none;
+            border: none;
+            padding: 0;
+            box-shadow: none;
+            image-rendering: pixelated;
+        }
+
+        #terminal::-webkit-scrollbar {
+            width: 0;
+            background: transparent;
+        }
+
+        #command-input, .command-input {
+            background: none;
+            border: none;
+            color: var(--white);
+            font-size: 16px;
+            outline: none;
+            caret-color: var(--lavender);
+            width: 100%;
+            box-shadow: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        body, #terminal, #command-input, .command-input {
+            font-family: 'TerminusWeb', monospace;
+            font-size: 16px;
+            line-height: 1.0;
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: grayscale;
+            font-smooth: never;
+            image-rendering: pixelated;
+            letter-spacing: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal">
+        <div class="output">Type 'help' to list available commands</div>
+    </div>
+
+    <script>
+        class Terminal {
+            constructor() {
+                this.terminal = document.getElementById('terminal');
+                this.commandHistory = [];
+                this.historyIndex = -1;
+                this.currentInput = '';
+                this.tabCompletionCandidates = [];
+                this.tabCompletionIndex = 0;
+                this.addNewInputLine();
+                this.scrollToBottom();
+            }
+
+            setupEventListeners() {
+                this.terminal.addEventListener('click', (e) => {
+                    if (e.target === this.terminal || e.target.classList.contains('output') || e.target.classList.contains('command-history')) {
+                        this.input.focus();
+                    }
+                });
+                this.input.addEventListener('keydown', (e) => this.handleKeyDown(e));
+            }
+
+            handleKeyDown(e) {
+                switch(e.key) {
+                    case 'Enter':
+                        e.preventDefault();
+                        this.processCommand(this.input.value.trim());
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        this.navigateHistory('up');
+                        break;
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        this.navigateHistory('down');
+                        break;
+                    case 'Tab':
+                        e.preventDefault();
+                        this.handleTabCompletion();
+                        break;
+                }
+            }
+
+            navigateHistory(direction) {
+                if (direction === 'up') {
+                    if (this.historyIndex < this.commandHistory.length - 1) {
+                        if (this.historyIndex === -1) {
+                            this.currentInput = this.input.value;
+                        }
+                        this.historyIndex++;
+                        this.input.value = this.commandHistory[this.commandHistory.length - 1 - this.historyIndex];
+                    }
+                } else {
+                    if (this.historyIndex > -1) {
+                        this.historyIndex--;
+                        if (this.historyIndex === -1) {
+                            this.input.value = this.currentInput;
+                        } else {
+                            this.input.value = this.commandHistory[this.commandHistory.length - 1 - this.historyIndex];
+                        }
+                    }
+                }
+            }
+
+            handleTabCompletion() {
+                const currentInput = this.input.value.trim();
+                if (!currentInput) return;
+                if (this.tabCompletionCandidates.length === 0) {
+                    this.tabCompletionCandidates = Object.keys(commands).filter(cmd => cmd.startsWith(currentInput));
+                    this.tabCompletionIndex = 0;
+                }
+                if (this.tabCompletionCandidates.length > 0) {
+                    this.input.value = this.tabCompletionCandidates[this.tabCompletionIndex];
+                    this.tabCompletionIndex = (this.tabCompletionIndex + 1) % this.tabCompletionCandidates.length;
+                }
+            }
+
+            scrollToBottom() {
+                this.terminal.scrollTop = this.terminal.scrollHeight;
+            }
+
+            createPrompt(cmd) {
+                const prompt = document.createElement('span');
+                prompt.className = 'prompt';
+                prompt.textContent = 'madeline@spellbound:~#';
+                const cmdSpan = document.createElement('span');
+                cmdSpan.className = 'static-cmd';
+                cmdSpan.textContent = ' ' + cmd;
+                const line = document.createElement('div');
+                line.className = 'input-line';
+                line.appendChild(prompt);
+                line.appendChild(cmdSpan);
+                return line;
+            }
+
+            createOutput(content, isError = false, isHelp = false) {
+                if (isHelp) {
+                    const pre = document.createElement('pre');
+                    pre.className = 'help';
+                    pre.textContent = content;
+                    return pre;
+                }
+                const output = document.createElement('div');
+                output.className = `output${isError ? ' error' : ''}`;
+                output.textContent = content;
+                return output;
+            }
+
+            clearVisibleScreen() {
+                while (this.terminal.firstChild) {
+                    this.terminal.removeChild(this.terminal.firstChild);
+                }
+                this.addNewInputLine();
+            }
+
+            addNewInputLine() {
+                const existingInputs = this.terminal.querySelectorAll('.input-line');
+                existingInputs.forEach(line => {
+                    if (line.querySelector('input')) {
+                        this.terminal.removeChild(line);
+                    }
+                });
+                const inputLine = document.createElement('div');
+                inputLine.className = 'input-line';
+                inputLine.innerHTML = `
+                    <span class="prompt">madeline@spellbound:~#</span>
+                    <input type="text" class="command-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                `;
+                this.terminal.appendChild(inputLine);
+                this.input = inputLine.querySelector('.command-input');
+                this.input.focus();
+                this.setupEventListeners();
+            }
+
+            processCommand(cmd) {
+                const prevInputLine = this.input.parentElement;
+                const staticLine = this.createPrompt(cmd);
+                this.terminal.replaceChild(staticLine, prevInputLine);
+                if (!cmd) {
+                    this.addNewInputLine();
+                    return;
+                }
+                this.commandHistory.push(cmd);
+                this.historyIndex = -1;
+                this.currentInput = '';
+                this.tabCompletionCandidates = [];
+                this.tabCompletionIndex = 0;
+                if (commands[cmd]) {
+                    const result = commands[cmd].execute();
+                    if (result) {
+                        if (cmd === 'help') {
+                            const output = this.createOutput(result, false, true);
+                            this.terminal.appendChild(output);
+                        } else if (cmd === 'fetch') {
+                            const output = document.createElement('div');
+                            output.className = 'output';
+                            output.innerHTML = result;
+                            this.terminal.appendChild(output);
+                        } else {
+                            const output = this.createOutput(result);
+                            this.terminal.appendChild(output);
+                        }
+                    }
+                } else {
+                    const error = this.createOutput(`-bash: ${cmd}: command not found`, true);
+                    this.terminal.appendChild(error);
+                }
+                this.addNewInputLine();
+                this.scrollToBottom();
+            }
+        }
+
+        function formatHelp(commands) {
+            const maxCmdLen = Math.max(...Object.keys(commands).map(cmd => cmd.length));
+            return Object.entries(commands)
+                .map(([cmd, info]) => cmd.padEnd(maxCmdLen + 2) + info.desc)
+                .join('\n');
+        }
+
+        function calculateElapsedTime(startDate) {
+            const now = new Date();
+            let years = now.getUTCFullYear() - startDate.getUTCFullYear();
+            let months = now.getUTCMonth() - startDate.getUTCMonth();
+            let days = now.getUTCDate() - startDate.getUTCDate();
+            let hours = now.getUTCHours() - startDate.getUTCHours();
+            let minutes = now.getUTCMinutes() - startDate.getUTCMinutes();
+            let seconds = now.getUTCSeconds() - startDate.getUTCSeconds();
+            let milliseconds = now.getUTCMilliseconds() - startDate.getUTCMilliseconds();
+            if (milliseconds < 0) { milliseconds += 1000; seconds--; }
+            if (seconds < 0) { seconds += 60; minutes--; }
+            if (minutes < 0) { minutes += 60; hours--; }
+            if (hours < 0) { hours += 24; days--; }
+            if (days < 0) { const prevMonth = new Date(now.getUTCFullYear(), now.getUTCMonth(), 0); days += prevMonth.getUTCDate(); months--; }
+            if (months < 0) { months += 12; years--; }
+            return `${years}y, ${months}m, ${days}d, ${hours}h, ${minutes}m, ${seconds}s, ${milliseconds}ms`;
+        }
+
+        function startTimesinceInterval() {
+            if (window._timesinceInterval) return;
+            window._timesinceInterval = setInterval(() => {
+                const t1 = document.getElementById('timer1');
+                const t2 = document.getElementById('timer2');
+                if (t1) t1.textContent = calculateElapsedTime(new Date('2024-09-12T00:00:00Z'));
+                if (t2) t2.textContent = calculateElapsedTime(new Date('2025-01-13T00:00:00Z'));
+            }, 100);
+        }
+
+        const commands = {
+            help: {
+                desc: "Show this help message",
+                execute: () => formatHelp(commands)
+            },
+            whoami: {
+                desc: "Display current user",
+                execute: () => "madeline"
+            },
+            projects: {
+                desc: "List projects",
+                execute: () => [
+                    "Loka Fabric Modpack     - https://modrinth.com/modpack/loka-fabric",
+                    "Minecraft Server 'magi' - https://discord.gg/W9zsKpTQGK"
+                ].join('\n')
+            },
+            contact: {
+                desc: "Show contact information",
+                execute: () => [
+                    "discord: madeline.gay",
+                    "github:  https://github.com/madeline0706"
+                ].join('\n')
+            },
+            clear: {
+                desc: "Clear the terminal",
+                execute: function() {
+                    terminal.clearVisibleScreen();
+                    return '';
+                }
+            },
+            fetch: {
+                desc: "Display system information",
+                execute: () => {
+                    const logoLines = [
+                        "...=*#*+...*.*.",
+                        ".*#%%%%%#**#**%*:",
+                        "        **##@%##*+",
+                        "        +##**+*#####**#",
+                        "         #*++**********##",
+                        "        *%*+******##*##**#@           *. ",
+                        "       *#****@##**##+++++++++++****+**   ",
+                        "       .%@#**#++++*******@@%***%=        ",
+                        "   %%@@@@#++++**+****%%@.                ",
+                        " %%@@#+++=+*%%@.                         ",
+                        "#+%=#@@+=                                 "
+                    ];
+                    const infoLines = [
+                        "{blue}madeline{reset}{gray}@{blue}spellbound{reset}",
+                        "{gray}---------------------------{reset}",
+                        "{blue}OS:        {reset}{white}spellboundOS v0.1{reset}",
+                        "{blue}Kernel:    {reset}{white}6.1.0-31-amd64{reset}",
+                        "{blue}Uptime:    {reset}{white}4 years, 230 days, 12 hours, 6 min{reset}",
+                        "{blue}Packages:  {reset}{white}54 (dpkg){reset}",
+                        "{blue}Shell:     {reset}{white}bash 5.2.15{reset}",
+                        "{blue}Terminal:  {reset}{white}/dev/pts/0{reset}",
+                        "{blue}CPU:       {reset}{white}AMD Ryzen 12 9900 (194){reset}",
+                        "{blue}GPU:       {reset}{white}NVIDIA RTX 6090{reset}",
+                        "{blue}Memory:    {reset}{white}19995MiB / 63745MiB{reset}"
+                    ];
+                    const logoWidth = Math.max(...logoLines.map(l => l.length));
+                    const infoWidth = Math.max(...infoLines.map(l => l.replace(/\{[^}]+\}/g, '').length));
+                    const lines = [];
+                    const totalLines = Math.max(logoLines.length, infoLines.length);
+                    for (let i = 0; i < totalLines; i++) {
+                        const logo = logoLines[i] ? logoLines[i].padEnd(logoWidth, ' ') : ' '.repeat(logoWidth);
+                        const info = infoLines[i] ? infoLines[i] : '';
+                        lines.push(logo + '   ' + info);
+                    }
+                    const colorBar =
+                        ' '.repeat(logoWidth + 3) +
+                        '{gray}██{reset}' +
+                        '{red}██{reset}' +
+                        '{yellow}██{reset}' +
+                        '{green}██{reset}' +
+                        '{mint}██{reset}' +
+                        '{blue}██{reset}' +
+                        '{lavender}██{reset}' +
+                        '{white}██{reset}';
+                    lines.push('');
+                    lines.push(colorBar);
+                    let out = lines.join('\n');
+                    const colorMap = {
+                        lavender: 'var(--lavender)',
+                        lilac: 'var(--lilac)',
+                        mint: 'var(--mint)',
+                        pink: 'var(--pink)',
+                        blue: 'var(--blue)',
+                        yellow: 'var(--yellow)',
+                        white: 'var(--white)',
+                        gray: 'var(--gray)',
+                        red: '#f38ba8',
+                        green: '#a6e3a1',
+                        reset: false
+                    };
+                    out = out.replace(/\{(\w+)\}/g, (m, c) => colorMap[c] ? `<span style=\"color:${colorMap[c]}\">` : '</span>');
+                    return `<pre style='margin:0;background:none;border:none;font-family:inherit;font-size:inherit;line-height:1.1;'>${out}</pre>`;
+                }
+            },
+            about: {
+                desc: "About me",
+                execute: () => [
+                    "What it is, yo. I am Madeline, a huge nerd.",
+                    "Always looking for cool stuff to do. Aspiring IT professional.",
+                    "Please check out my projects, and consider joining my server, magi.",
+                    "It is for my minecraft server, but I also want to build a community!"
+                ].join('\n')
+            },
+            credits: {
+                desc: "Show credits for this project",
+                execute: () => [
+                    "The idea for this website came solely from 'madeline.sh",
+                    "You should check that site out, it is so much cooler than this one!"
+                ].join('\n')
+            },
+            timesince: {
+                desc: "Live timers for two very important dates",
+                execute: () => {
+                    setTimeout(() => {
+                        // Replace the timer lines with spans for live updating
+                        const outputs = document.querySelectorAll('.output');
+                        let last = null;
+                        outputs.forEach(o => {
+                            if (o.textContent.includes('💊') && o.textContent.includes('❤️')) last = o;
+                        });
+                        if (last && !last.querySelector('#timer1')) {
+                            last.innerHTML = last.innerHTML.replace(
+                                /💊 ([^\n]*)/,
+                                '💊 <span id="timer1">$1</span>'
+                            ).replace(
+                                /❤️ ([^\n]*)/,
+                                '❤️ <span id="timer2">$1</span>'
+                            );
+                        }
+                        startTimesinceInterval();
+                    }, 0);
+                    return [
+                        '💊 Loading...',
+                        '❤️ Loading...'
+                    ].join('\n');
+                }
+            }
+        };
+
+        const terminal = new Terminal();
+    </script>
+</body>
+</html> 
