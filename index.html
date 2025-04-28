@@ -286,13 +286,24 @@
                 this.currentInput = '';
                 this.tabCompletionCandidates = [];
                 this.tabCompletionIndex = 0;
-                if (commands[cmd]) {
-                    const result = commands[cmd].execute();
-                    if (result) {
-                        if (cmd === 'help') {
+                const commandParts = cmd.split(' ');
+                const baseCmd = commandParts[0];
+                const argument = commandParts.slice(1).join(' ');
+
+                if (commands[baseCmd]) {
+                    const result = commands[baseCmd].execute(argument);
+                    if (result && typeof result.then === 'function') {
+                        result.then(outputContent => {
+                            const output = this.createOutput(outputContent);
+                            this.terminal.appendChild(output);
+                            this.addNewInputLine();
+                            this.scrollToBottom();
+                        });
+                    } else if (result) {
+                        if (baseCmd === 'help') {
                             const output = this.createOutput(result, false, true);
                             this.terminal.appendChild(output);
-                        } else if (cmd === 'fetch') {
+                        } else if (baseCmd === 'fetch') {
                             const output = document.createElement('div');
                             output.className = 'output';
                             output.innerHTML = result;
@@ -301,13 +312,15 @@
                             const output = this.createOutput(result);
                             this.terminal.appendChild(output);
                         }
+                        this.addNewInputLine();
+                        this.scrollToBottom();
                     }
                 } else {
                     const error = this.createOutput(`-bash: ${cmd}: command not found`, true);
                     this.terminal.appendChild(error);
+                    this.addNewInputLine();
+                    this.scrollToBottom();
                 }
-                this.addNewInputLine();
-                this.scrollToBottom();
             }
         }
 
@@ -320,19 +333,22 @@
 
         function calculateElapsedTime(startDate) {
             const now = new Date();
-            let years = now.getUTCFullYear() - startDate.getUTCFullYear();
-            let months = now.getUTCMonth() - startDate.getUTCMonth();
-            let days = now.getUTCDate() - startDate.getUTCDate();
-            let hours = now.getUTCHours() - startDate.getUTCHours();
-            let minutes = now.getUTCMinutes() - startDate.getUTCMinutes();
-            let seconds = now.getUTCSeconds() - startDate.getUTCSeconds();
-            let milliseconds = now.getUTCMilliseconds() - startDate.getUTCMilliseconds();
-            if (milliseconds < 0) { milliseconds += 1000; seconds--; }
-            if (seconds < 0) { seconds += 60; minutes--; }
-            if (minutes < 0) { minutes += 60; hours--; }
-            if (hours < 0) { hours += 24; days--; }
-            if (days < 0) { const prevMonth = new Date(now.getUTCFullYear(), now.getUTCMonth(), 0); days += prevMonth.getUTCDate(); months--; }
-            if (months < 0) { months += 12; years--; }
+            let timeDiff = now.getTime() - startDate.getTime();
+
+            let milliseconds = Math.floor(timeDiff % 1000);
+            timeDiff = Math.floor(timeDiff / 1000);
+            let seconds = Math.floor(timeDiff % 60);
+            timeDiff = Math.floor(timeDiff / 60);
+            let minutes = Math.floor(timeDiff % 60);
+            timeDiff = Math.floor(timeDiff / 60);
+            let hours = Math.floor(timeDiff % 24);
+            let days = Math.floor(timeDiff / 24);
+
+            let years = Math.floor(days / 365);
+            days %= 365;
+            let months = Math.floor(days / 30);
+            days %= 30;
+
             return `${years}y, ${months}m, ${days}d, ${hours}h, ${minutes}m, ${seconds}s, ${milliseconds}ms`;
         }
 
@@ -486,10 +502,43 @@
                         '❤️ Loading...'
                     ].join('\n');
                 }
-            }
+            },
+            joke: {
+                desc: "Display a random joke. Try `joke pun`! (Categories: programming, misc, dark, pun, spooky, christmas)",
+                execute: (category) => {
+                    return getJoke(category).then(joke => joke);
+                }
+            },
         };
 
         const terminal = new Terminal();
+
+        function getJoke(category) {
+            let url = 'https://v2.jokeapi.dev/joke/Any';
+            if (category) {
+                url = `https://v2.jokeapi.dev/joke/${category}`;
+            }
+
+            return fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        return "Failed to fetch joke.";
+                    }
+
+                    if (data.joke) {
+                        return data.joke;
+                    } else if (data.setup && data.delivery) {
+                        return `${data.setup}\n${data.delivery}`;
+                    } else {
+                        return "Failed to fetch joke.";
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching joke:", error);
+                    return "Failed to fetch joke.";
+                });
+        }
     </script>
 </body>
-</html> 
+</html>
