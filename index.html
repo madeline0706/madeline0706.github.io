@@ -320,19 +320,22 @@
 
         function calculateElapsedTime(startDate) {
             const now = new Date();
-            let years = now.getUTCFullYear() - startDate.getUTCFullYear();
-            let months = now.getUTCMonth() - startDate.getUTCMonth();
-            let days = now.getUTCDate() - startDate.getUTCDate();
-            let hours = now.getUTCHours() - startDate.getUTCHours();
-            let minutes = now.getUTCMinutes() - startDate.getUTCMinutes();
-            let seconds = now.getUTCSeconds() - startDate.getUTCSeconds();
-            let milliseconds = now.getUTCMilliseconds() - startDate.getUTCMilliseconds();
-            if (milliseconds < 0) { milliseconds += 1000; seconds--; }
-            if (seconds < 0) { seconds += 60; minutes--; }
-            if (minutes < 0) { minutes += 60; hours--; }
-            if (hours < 0) { hours += 24; days--; }
-            if (days < 0) { const prevMonth = new Date(now.getUTCFullYear(), now.getUTCMonth(), 0); days += prevMonth.getUTCDate(); months--; }
-            if (months < 0) { months += 12; years--; }
+            let timeDiff = now.getTime() - startDate.getTime();
+
+            let milliseconds = Math.floor(timeDiff % 1000);
+            timeDiff = Math.floor(timeDiff / 1000);
+            let seconds = Math.floor(timeDiff % 60);
+            timeDiff = Math.floor(timeDiff / 60);
+            let minutes = Math.floor(timeDiff % 60);
+            timeDiff = Math.floor(timeDiff / 60);
+            let hours = Math.floor(timeDiff % 24); 
+            let days = Math.floor(timeDiff / 24);
+
+            let years = Math.floor(days / 365);
+            days %= 365;
+            let months = Math.floor(days / 30);
+            days %= 30;
+
             return `${years}y, ${months}m, ${days}d, ${hours}h, ${minutes}m, ${seconds}s, ${milliseconds}ms`;
         }
 
