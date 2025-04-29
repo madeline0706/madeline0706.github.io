@@ -325,10 +325,22 @@
         }
 
         function formatHelp(commands) {
-            const maxCmdLen = Math.max(...Object.keys(commands).map(cmd => cmd.length));
-            return Object.entries(commands)
-                .map(([cmd, info]) => cmd.padEnd(maxCmdLen + 2) + info.desc)
-                .join('\n');
+            const categories = {
+                personal: ['whoami', 'about', 'contact', 'projects', 'about', 'timesince'],
+                system: ['help', 'clear', 'fetch'],
+                fun: ['joke'],
+                misc: ['credits']
+            };
+
+            let output = '';
+            for (const category in categories) {
+                output += `\n${category.toUpperCase()}:\n`;
+                const maxCmdLen = Math.max(...categories[category].map(cmd => cmd.length));
+                categories[category].forEach(cmd => {
+                    output += `${cmd.padEnd(maxCmdLen + 2)}${commands[cmd].desc}\n`;
+                });
+            }
+            return output;
         }
 
         function calculateElapsedTime(startDate) {
