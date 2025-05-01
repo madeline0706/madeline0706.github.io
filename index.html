@@ -148,6 +148,8 @@
                 this.currentInput = '';
                 this.tabCompletionCandidates = [];
                 this.tabCompletionIndex = 0;
+                this.isWaitingForSshConfirmation = false; // State for SSH confirmation
+                this.sshTargetHost = null; // Store target host during confirmation
                 this.addNewInputLine();
                 this.scrollToBottom();
             }
@@ -274,9 +276,46 @@
             }
 
             processCommand(cmd) {
+                // Handle SSH confirmation input first
+                if (this.isWaitingForSshConfirmation) {
+                    const confirmationResponse = cmd.toLowerCase();
+                    const targetHost = this.sshTargetHost;
+
+                    // Add the static line for the 'yes'/'no' input
+                    const prevInputLine = this.input.parentElement;
+                    const staticLine = this.createPrompt(cmd);
+                    this.terminal.replaceChild(staticLine, prevInputLine);
+
+                    // Reset state immediately
+                    this.isWaitingForSshConfirmation = false;
+                    this.sshTargetHost = null;
+
+                    if (confirmationResponse === 'yes' || confirmationResponse === 'y') {
+                        const outputMessage = `Connecting to ${targetHost}...`;
+                        const output = this.createOutput(outputMessage);
+                        this.terminal.appendChild(output);
+                        this.scrollToBottom(); // Scroll down to show the message
+
+                        // Wait 2 seconds then redirect
+                        setTimeout(() => {
+                            window.location.href = 'https://lynzl.spellbound.sh';
+                        }, 2000);
+                        // Don't add a new input line here as we are redirecting
+                    } else {
+                        const outputMessage = "Connection cancelled.";
+                        const output = this.createOutput(outputMessage);
+                        this.terminal.appendChild(output);
+                        this.addNewInputLine(); // Add input line only if cancelled
+                        this.scrollToBottom();
+                    }
+                    return; // Stop further processing for this input
+                }
+
+                // Normal command processing starts here
                 const prevInputLine = this.input.parentElement;
                 const staticLine = this.createPrompt(cmd);
                 this.terminal.replaceChild(staticLine, prevInputLine);
+
                 if (!cmd) {
                     this.addNewInputLine();
                     return;
@@ -325,10 +364,22 @@
         }
 
         function formatHelp(commands) {
-            const maxCmdLen = Math.max(...Object.keys(commands).map(cmd => cmd.length));
-            return Object.entries(commands)
-                .map(([cmd, info]) => cmd.padEnd(maxCmdLen + 2) + info.desc)
-                .join('\n');
+            const categories = {
+                personal: ['whoami', 'about', 'contact', 'projects', 'about', 'timesince'],
+                system: ['help', 'clear', 'fetch', 'ssh'],
+                fun: ['joke'],
+                misc: ['credits']
+            };
+
+            let output = '';
+            for (const category in categories) {
+                output += `\n${category.toUpperCase()}:\n`;
+                const maxCmdLen = Math.max(...categories[category].map(cmd => cmd.length));
+                categories[category].forEach(cmd => {
+                    output += `${cmd.padEnd(maxCmdLen + 2)}${commands[cmd].desc}\n`;
+                });
+            }
+            return output;
         }
 
         function calculateElapsedTime(startDate) {
@@ -390,6 +441,43 @@
                 execute: function() {
                     terminal.clearVisibleScreen();
                     return '';
+                }
+            },
+            ssh: {
+                desc: "Connect to a remote computer.",
+                execute: (args) => {
+                    if (args === 'lynzl@spellbound') {
+                        // Display confirmation question in the terminal
+                        const question = `Are you sure you want to connect to ${args}? (yes/no)`;
+                        const output = terminal.createOutput(question); // Use the terminal instance
+                        terminal.terminal.appendChild(output); // Append question to terminal
+
+                        // Set state to wait for confirmation
+                        terminal.isWaitingForSshConfirmation = true;
+                        terminal.sshTargetHost = args;
+
+                         // Add a new input line for the yes/no answer, with a simple prompt '>'
+                         const inputLine = document.createElement('div');
+                         // Add a specific class for potential styling
+                         inputLine.className = 'input-line confirmation-input-line';
+                         inputLine.innerHTML = `
+                             <span class="confirmation-prompt" style="color: var(--gray); margin-right: 0.5em;">></span>
+                             <input type="text" class="command-input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                         `;
+                         terminal.terminal.appendChild(inputLine);
+                         terminal.input = inputLine.querySelector('.command-input');
+                        terminal.input.focus();
+                        terminal.setupEventListeners(); // Re-attach listeners to the new input
+                        terminal.scrollToBottom();
+
+                        return ''; // Don't add another input line via processCommand's default path
+
+                    } else if (args) {
+                         return `-bash: ssh: Could not resolve hostname ${args}: Name or service not known`;
+                    }
+                    else {
+                        return "usage: ssh user@hostname. Try ssh lynzl@spellbound";
+                    }
                 }
             },
             fetch: {
@@ -473,7 +561,8 @@
                 desc: "Show credits for this project",
                 execute: () => [
                     "The idea for this website came solely from 'madeline.sh'",
-                    "You should check that site out, it is so much cooler than this one!"
+                    "You should check that site out, it is so much cooler than this one!",
+                    "Mainly coded by madeline, with a little help from lynzl. try `ssh lynzl@spellbound`"
                 ].join('\n')
             },
             timesince: {
